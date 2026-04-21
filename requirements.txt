@@ -1,9 +1,9 @@
 streamlit
 
 openai>=2.26.0,<3.0.0
+langchain-openai==1.1.11
 langchain==1.2.13
 langchain-core==1.2.19
-langchain-openai==1.1.11
 langchain-google-genai==4.2.1
 langchain-anthropic==1.4.0
 
