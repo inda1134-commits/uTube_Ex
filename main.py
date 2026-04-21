@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
-SUMMARIZE_PROMPT = """다음 콘텐츠 내용을 약 300자 정도로 알기 쉽게 요약해주세요.
+SUMMARIZE_PROMPT = """다음 콘텐츠 내용을 약 300자 정도로 알기 쉽게 요약해주세요...
 ======
 {context}
 ======
@@ -86,5 +86,5 @@ def main():
                 st.markdown("## Original Text")
                 st.write(context)
 
-if __name__ == "__main__":
+if __name__ == "__main__": 
     main()
