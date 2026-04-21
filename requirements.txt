@@ -7,12 +7,15 @@ langchain-openai==1.1.11
 langchain-google-genai==4.2.1
 langchain-anthropic==1.4.0
 
+python-dotenv==1.1.1
+pydantic==2.11.10
+requests==2.32.5
+
 instructor==1.12.0
 grpcio==1.75.1
 setuptools
 wheel
-python-dotenv
-pandas
+
 numpy
 requests
-google-api-python-client
+# google-api-python-client
