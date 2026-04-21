@@ -49,7 +49,7 @@ ftfy==6.3.1
 gitdb==4.0.12
 GitPython==3.1.46
 google-ai-generativelanguage==0.6.15
-google-api-core==2.30.0
+google-api-core==2.25.1
 google-api-python-client==2.193.0
 google-auth==2.49.1
 google-auth-httplib2==0.3.0
@@ -57,8 +57,8 @@ google-genai==1.68.0
 google-generativeai==0.8.6
 googleapis-common-protos==1.72.0
 greenlet==3.3.1
-grpcio==1.78.0
-grpcio-status==1.71.2
+grpcio==1.62.3
+grpcio-status==1.62.3
 h11==0.16.0
 hf-xet==1.2.0
 httpcore==1.0.9
@@ -145,7 +145,7 @@ posthog==5.4.0
 pre_commit==4.5.1
 propcache==0.4.1
 proto-plus==1.27.1
-protobuf==5.29.6
+protobuf<6
 pyarrow==21.0.0
 pyasn1==0.6.3
 pyasn1_modules==0.4.2
