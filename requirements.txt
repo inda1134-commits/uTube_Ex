@@ -1,0 +1,18 @@
+streamlit>=1.33
+
+# Tokenizer
+tiktoken>=0.7
+
+# LangChain core (모듈 분리 버전)
+langchain-core>=0.3
+langchain-community>=0.3
+langchain-text-splitters>=0.3
+
+# LLM providers
+langchain-openai>=0.2
+langchain-anthropic>=0.1
+langchain-google-genai>=1.0
+
+# YouTube loader 관련
+youtube-transcript-api>=0.6
+pytube>=15.0
