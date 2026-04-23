@@ -1,6 +1,9 @@
 import traceback
 import tiktoken
 import streamlit as st
+import requests
+
+from bs4 import BeautifulSoup
 
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -16,7 +19,10 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from urllib.parse import urlparse
 
 
-SUMMARIZE_PROMPT = """다음 유튜브 콘텐츠 내용을 아래와 같이 한국어 마크다운 형식으로 요약해주세요.
+# --------------------------------------------------
+# 프롬프트
+# --------------------------------------------------
+YOUTUBE_SUMMARIZE_PROMPT = """다음 유튜브 콘텐츠 내용을 아래와 같이 한국어 마크다운 형식으로 요약해주세요.
 
 ### 콘텐츠
 {content}
@@ -29,18 +35,30 @@ SUMMARIZE_PROMPT = """다음 유튜브 콘텐츠 내용을 아래와 같이 한�
 - **후원금** 홍보 내용 요약(계좌번호 표시):
 """
 
+WEBSITE_SUMMARIZE_PROMPT = """다음 웹사이트 본문 내용을 한국어 마크다운 형식으로 요약해주세요.
+
+### 웹사이트 본문
+{content}
+
+### 요약할 작업
+- 전체 내용 요약 (1000자):
+- 핵심 주장 또는 핵심 메시지:
+- 중요한 숫자/통계/가격 정보:
+- 주의해야 할 내용:
+"""
+
 
 # --------------------------------------------------
 # 페이지 초기화
 # --------------------------------------------------
 def init_page():
     st.set_page_config(
-        page_title="유튜브 채널 요약하기",
+        page_title="URL 콘텐츠 요약하기",
         page_icon="♣",
         layout="wide",
     )
 
-    st.header("유튜브 요약하기 ♧")
+    st.header("유튜브 / 웹사이트 요약하기 ♧")
     st.sidebar.title("LLM 설정")
 
 
@@ -113,7 +131,7 @@ def select_model(
 
     elif provider == "Anthropic":
         models = ("claude-sonnet-4-5",)
-        model = st.sidebar.radio("Choose Anthropic Model", models)
+        st.sidebar.radio("Choose Anthropic Model", models)
 
         if not anthropic_api_key:
             st.warning("Anthropic API Key를 입력해주세요.")
@@ -141,10 +159,28 @@ def select_model(
 
 
 # --------------------------------------------------
+# URL 종류 판별
+# --------------------------------------------------
+def is_youtube_url(url):
+    parsed = urlparse(url)
+    domain = parsed.netloc.lower()
+
+    youtube_domains = [
+        "youtube.com",
+        "www.youtube.com",
+        "youtu.be",
+        "m.youtube.com",
+    ]
+
+    return any(d in domain for d in youtube_domains)
+
+
+# --------------------------------------------------
 # 요약 체인
 # --------------------------------------------------
 def init_summarize_chain(
     provider,
+    prompt_text,
     openai_api_key="",
     anthropic_api_key="",
     google_api_key="",
@@ -158,7 +194,7 @@ def init_summarize_chain(
 
     prompt = ChatPromptTemplate.from_messages(
         [
-            ("user", SUMMARIZE_PROMPT),
+            ("user", prompt_text),
         ]
     )
 
@@ -172,12 +208,14 @@ def init_summarize_chain(
 # --------------------------------------------------
 def init_chain(
     provider,
+    prompt_text,
     openai_api_key="",
     anthropic_api_key="",
     google_api_key="",
 ):
     summarize_chain = init_summarize_chain(
         provider=provider,
+        prompt_text=prompt_text,
         openai_api_key=openai_api_key,
         anthropic_api_key=anthropic_api_key,
         google_api_key=google_api_key,
@@ -219,8 +257,7 @@ def init_chain(
             return map_reduce_chain
         return summarize_chain
 
-    chain = RunnableLambda(route)
-    return chain
+    return RunnableLambda(route)
 
 
 # --------------------------------------------------
@@ -237,8 +274,8 @@ def validate_url(url):
 # --------------------------------------------------
 # 유튜브 내용 가져오기
 # --------------------------------------------------
-def get_content_utube(url):
-    with st.spinner("Fetching Youtube..."):
+def get_content_youtube(url):
+    with st.spinner("Fetching YouTube..."):
         try:
             loader = YoutubeLoader.from_youtube_url(
                 url,
@@ -250,10 +287,74 @@ def get_content_utube(url):
 
             if res:
                 return res[0].page_content
+
             return None
 
         except Exception as e:
-            st.error(f"Error occurred: {e}")
+            st.error(f"YouTube 처리 오류: {e}")
+            st.code(traceback.format_exc())
+            return None
+
+
+# --------------------------------------------------
+# 웹사이트 본문 가져오기
+# --------------------------------------------------
+def get_content_website(url):
+    with st.spinner("Fetching Website..."):
+        try:
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 "
+                    "(Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) "
+                    "Chrome/120.0 Safari/537.36"
+                )
+            }
+
+            response = requests.get(
+                url,
+                headers=headers,
+                timeout=15,
+            )
+            response.raise_for_status()
+
+            soup = BeautifulSoup(
+                response.text,
+                "html.parser",
+            )
+
+            # 불필요 태그 제거
+            for tag in soup(
+                [
+                    "script",
+                    "style",
+                    "nav",
+                    "footer",
+                    "header",
+                    "aside",
+                    "noscript",
+                ]
+            ):
+                tag.decompose()
+
+            text = soup.get_text(separator="\n")
+
+            lines = [
+                line.strip()
+                for line in text.splitlines()
+                if line.strip()
+            ]
+
+            cleaned_text = "\n".join(lines)
+
+            if len(cleaned_text) < 100:
+                return None
+
+            return cleaned_text[:50000]
+
+        except Exception as e:
+            st.error(f"웹사이트 처리 오류: {e}")
             st.code(traceback.format_exc())
             return None
 
@@ -284,29 +385,42 @@ def main():
         google_api_key,
     ) = input_api_keys()
 
-    if url := st.text_input("YouTube URL 입력", key="input"):
-        is_valid_url = validate_url(url)
-
-        if not is_valid_url:
+    if url := st.text_input("URL 입력 (YouTube 또는 웹사이트)", key="input"):
+        if not validate_url(url):
             st.error("유효한 URL을 입력해주세요.")
             return
 
-        if content := get_content_utube(url):
-            chain = init_chain(
-                provider=provider,
-                openai_api_key=openai_api_key,
-                anthropic_api_key=anthropic_api_key,
-                google_api_key=google_api_key,
-            )
+        # URL 종류 판별
+        if is_youtube_url(url):
+            content = get_content_youtube(url)
+            prompt_text = YOUTUBE_SUMMARIZE_PROMPT
+            content_type = "YouTube"
 
-            st.markdown("## Summary")
-            st.write_stream(
-                chain.stream({"content": content})
-            )
+        else:
+            content = get_content_website(url)
+            prompt_text = WEBSITE_SUMMARIZE_PROMPT
+            content_type = "Website"
 
-            st.markdown("---")
-            st.markdown("## Original Text")
-            st.write(content)
+        if not content:
+            st.error("콘텐츠를 가져오지 못했습니다.")
+            return
+
+        chain = init_chain(
+            provider=provider,
+            prompt_text=prompt_text,
+            openai_api_key=openai_api_key,
+            anthropic_api_key=anthropic_api_key,
+            google_api_key=google_api_key,
+        )
+
+        st.markdown(f"## {content_type} Summary")
+        st.write_stream(
+            chain.stream({"content": content})
+        )
+
+        st.markdown("---")
+        st.markdown("## Original Text")
+        st.write(content)
 
 
 if __name__ == "__main__":
