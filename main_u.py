@@ -17,12 +17,12 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
-import os
-from dotenv import load_dotenv
+# import os
+# from dotenv import load_dotenv
 
-load_dotenv()
+# load_dotenv()
 
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+# os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
 SUMMARIZE_PROMPT = """다음 유튜브 콘텐츠 내용을 아래와 같이 한국어 마크다운 형식으로 요약해주세요...
 ### 콘텐츠
