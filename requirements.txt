@@ -1,18 +1,27 @@
-streamlit>=1.33
+streamlit==1.33.0
 
-# Tokenizer
-tiktoken>=0.7
+# tokenizer
+tiktoken==0.7.0
 
-# LangChain core (모듈 분리 버전)
-langchain-core>=0.3
-langchain-community>=0.3
-langchain-text-splitters>=0.3
+# LangChain
+langchain-core==0.3.59
+langchain-community==0.3.24
+langchain-text-splitters==0.3.8
 
-# LLM providers
-langchain-openai>=0.2
-langchain-anthropic>=0.1
-langchain-google-genai>=1.0
+# providers
+langchain-openai==0.3.17
+langchain-anthropic==0.3.13
+langchain-google-genai==2.1.4
 
-# YouTube loader 관련
-youtube-transcript-api>=0.6
-pytube>=15.0
+# youtube
+youtube-transcript-api==0.6.2
+pytube==15.0.0
+
+# 필수 안정화 패키지
+openai==1.79.0
+anthropic==0.51.0
+google-generativeai==0.8.5
+
+# 호환성
+pydantic==2.11.4
+typing-extensions>=4.12.2
