@@ -13,8 +13,12 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-# YoutubeLoader 제거
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import (
+    TranscriptsDisabled,
+    NoTranscriptFound,
+    VideoUnavailable,
+)
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -189,7 +193,7 @@ def extract_youtube_video_id(url):
         parsed = urlparse(url)
 
         # youtu.be 형식
-        if parsed.netloc in ["youtu.be"]:
+        if parsed.netloc == "youtu.be":
             return parsed.path.lstrip("/")
 
         # youtube.com/watch?v=
@@ -311,7 +315,7 @@ def validate_url(url):
 
 
 # --------------------------------------------------
-# 유튜브 내용 가져오기 (수정 완료)
+# 유튜브 내용 가져오기 (최종 안정 버전)
 # --------------------------------------------------
 def get_content_youtube(url):
     with st.spinner("Fetching YouTube..."):
@@ -322,15 +326,17 @@ def get_content_youtube(url):
                 st.error("YouTube video_id를 추출할 수 없습니다.")
                 return None
 
+            # 한국어 → 영어 순으로 자막 탐색
             transcript = YouTubeTranscriptApi.get_transcript(
                 video_id,
                 languages=["ko", "en"],
             )
 
             if not transcript:
-                st.error("자막을 가져오지 못했습니다.")
+                st.warning("이 영상에는 자막이 존재하지 않습니다.")
                 return None
 
+            # 자막 텍스트 병합
             content = "\n".join(
                 item["text"]
                 for item in transcript
@@ -338,10 +344,30 @@ def get_content_youtube(url):
             )
 
             if not content.strip():
-                st.error("자막 내용이 비어 있습니다.")
+                st.warning("자막 내용이 비어 있습니다.")
                 return None
 
             return content[:50000]
+
+        except TranscriptsDisabled:
+            st.warning(
+                "이 영상은 자막(Transcript)이 비활성화되어 있어 "
+                "내용을 가져올 수 없습니다."
+            )
+            return None
+
+        except NoTranscriptFound:
+            st.warning(
+                "이 영상에는 사용 가능한 자막이 없습니다."
+            )
+            return None
+
+        except VideoUnavailable:
+            st.warning(
+                "이 영상을 현재 가져올 수 없습니다. "
+                "(삭제됨 / 비공개 / 지역 제한 등)"
+            )
+            return None
 
         except Exception as e:
             st.error(f"YouTube 처리 오류: {e}")
@@ -451,7 +477,6 @@ def main():
             content = get_content_youtube(url)
             prompt_text = YOUTUBE_SUMMARIZE_PROMPT
             content_type = "YouTube"
-
         else:
             content = get_content_website(url)
             prompt_text = WEBSITE_SUMMARIZE_PROMPT
