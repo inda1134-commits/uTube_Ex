@@ -13,10 +13,12 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from langchain_community.document_loaders import YoutubeLoader
+# YoutubeLoader 제거
+from youtube_transcript_api import YouTubeTranscriptApi
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 
 # --------------------------------------------------
@@ -180,6 +182,38 @@ def is_youtube_url(url):
 
 
 # --------------------------------------------------
+# YouTube video_id 추출
+# --------------------------------------------------
+def extract_youtube_video_id(url):
+    try:
+        parsed = urlparse(url)
+
+        # youtu.be 형식
+        if parsed.netloc in ["youtu.be"]:
+            return parsed.path.lstrip("/")
+
+        # youtube.com/watch?v=
+        if "youtube.com" in parsed.netloc:
+            query = parse_qs(parsed.query)
+
+            if "v" in query:
+                return query["v"][0]
+
+            # shorts 지원
+            if "/shorts/" in parsed.path:
+                return parsed.path.split("/shorts/")[1].split("/")[0]
+
+            # embed 지원
+            if "/embed/" in parsed.path:
+                return parsed.path.split("/embed/")[1].split("/")[0]
+
+        return None
+
+    except Exception:
+        return None
+
+
+# --------------------------------------------------
 # 요약 체인
 # --------------------------------------------------
 def init_summarize_chain(
@@ -259,6 +293,7 @@ def init_chain(
 
         if token_count > 16000:
             return map_reduce_chain
+
         return summarize_chain
 
     return RunnableLambda(route)
@@ -276,23 +311,37 @@ def validate_url(url):
 
 
 # --------------------------------------------------
-# 유튜브 내용 가져오기
+# 유튜브 내용 가져오기 (수정 완료)
 # --------------------------------------------------
 def get_content_youtube(url):
     with st.spinner("Fetching YouTube..."):
         try:
-            loader = YoutubeLoader.from_youtube_url(
-                url,
-                add_video_info=False,
-                language=["ko", "en"],
+            video_id = extract_youtube_video_id(url)
+
+            if not video_id:
+                st.error("YouTube video_id를 추출할 수 없습니다.")
+                return None
+
+            transcript = YouTubeTranscriptApi.get_transcript(
+                video_id,
+                languages=["ko", "en"],
             )
 
-            res = loader.load()
+            if not transcript:
+                st.error("자막을 가져오지 못했습니다.")
+                return None
 
-            if res:
-                return res[0].page_content
+            content = "\n".join(
+                item["text"]
+                for item in transcript
+                if item.get("text")
+            )
 
-            return None
+            if not content.strip():
+                st.error("자막 내용이 비어 있습니다.")
+                return None
+
+            return content[:50000]
 
         except Exception as e:
             st.error(f"YouTube 처리 오류: {e}")
@@ -389,7 +438,10 @@ def main():
         google_api_key,
     ) = input_api_keys()
 
-    if url := st.text_input("URL 입력 (YouTube 또는 웹사이트)", key="input"):
+    if url := st.text_input(
+        "URL 입력 (YouTube 또는 웹사이트)",
+        key="input",
+    ):
         if not validate_url(url):
             st.error("유효한 URL을 입력해주세요.")
             return
