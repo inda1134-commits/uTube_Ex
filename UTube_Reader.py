@@ -314,6 +314,11 @@ def validate_url(url):
 # --------------------------------------------------
 # 유튜브 내용 가져오기
 # --------------------------------------------------
+# --------------------------------------------------
+# 유튜브 내용 가져오기
+# 자막이 없거나 비활성화되어도
+# 영상 메타데이터 + 페이지 설명(description)까지 가져오도록 개선
+# --------------------------------------------------
 def get_content_youtube(url):
     with st.spinner("Fetching YouTube..."):
         try:
@@ -323,38 +328,115 @@ def get_content_youtube(url):
                 st.error("YouTube video_id를 추출할 수 없습니다.")
                 return None
 
-            transcript = YouTubeTranscriptApi.get_transcript(
-                video_id,
-                languages=["ko", "en"],
-            )
+            content_parts = []
 
-            if not transcript:
-                st.warning("이 영상에는 자막이 존재하지 않습니다.")
+            # ------------------------------------------
+            # 1. Transcript 우선 시도
+            # ------------------------------------------
+            try:
+                transcript = YouTubeTranscriptApi.get_transcript(
+                    video_id,
+                    languages=["ko", "en"],
+                )
+
+                if transcript:
+                    transcript_text = "\n".join(
+                        item["text"]
+                        for item in transcript
+                        if item.get("text")
+                    )
+
+                    if transcript_text.strip():
+                        content_parts.append(
+                            f"[YouTube Transcript]\n{transcript_text}"
+                        )
+
+            except (
+                TranscriptsDisabled,
+                NoTranscriptFound,
+                ParseError,
+            ):
+                st.info(
+                    "자막을 가져올 수 없어 영상 설명(description)으로 대체합니다."
+                )
+
+            except Exception:
+                pass
+
+            # ------------------------------------------
+            # 2. YouTube 페이지 메타데이터 fallback
+            # ------------------------------------------
+            try:
+                watch_url = f"https://www.youtube.com/watch?v={video_id}"
+
+                headers = {
+                    "User-Agent": (
+                        "Mozilla/5.0 "
+                        "(Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) "
+                        "Chrome/120.0 Safari/537.36"
+                    )
+                }
+
+                response = requests.get(
+                    watch_url,
+                    headers=headers,
+                    timeout=15,
+                )
+                response.raise_for_status()
+
+                soup = BeautifulSoup(
+                    response.text,
+                    "html.parser",
+                )
+
+                title = ""
+                description = ""
+
+                # title 추출
+                if soup.title:
+                    title = soup.title.text.strip()
+
+                # meta description 추출
+                meta_desc = soup.find(
+                    "meta",
+                    attrs={"name": "description"},
+                )
+
+                if meta_desc and meta_desc.get("content"):
+                    description = meta_desc.get("content").strip()
+
+                meta_text = []
+
+                if title:
+                    meta_text.append(f"[영상 제목]\n{title}")
+
+                if description:
+                    meta_text.append(
+                        f"[영상 설명]\n{description}"
+                    )
+
+                if meta_text:
+                    content_parts.append(
+                        "\n\n".join(meta_text)
+                    )
+
+            except Exception:
+                pass
+
+            # ------------------------------------------
+            # 3. 최종 결과 반환
+            # ------------------------------------------
+            final_content = "\n\n".join(content_parts)
+
+            if not final_content.strip():
+                st.warning(
+                    "이 영상에서 가져올 수 있는 텍스트 정보가 없습니다."
+                )
                 return None
 
-            content = "\n".join(
-                item["text"]
-                for item in transcript
-                if item.get("text")
-            )
-
-            if not content.strip():
-                st.warning("자막 내용이 비어 있습니다.")
-                return None
-
-            return content[:50000]
-
-        except TranscriptsDisabled:
-            st.warning(
-                "이 영상은 자막(Transcript)이 비활성화되어 있습니다."
-            )
-            return None
-
-        except NoTranscriptFound:
-            st.warning(
-                "이 영상에는 사용 가능한 자막이 없습니다."
-            )
-            return None
+            return final_content[:50000]
 
         except VideoUnavailable:
             st.warning(
@@ -363,18 +445,10 @@ def get_content_youtube(url):
             )
             return None
 
-        except ParseError:
-            st.warning(
-                "이 영상의 자막 데이터를 읽을 수 없습니다. "
-                "자동 생성 자막 오류 또는 YouTube 응답 문제입니다."
-            )
-            return None
-
         except Exception as e:
             st.error(f"YouTube 처리 오류: {e}")
             st.code(traceback.format_exc())
             return None
-
 
 # --------------------------------------------------
 # 웹사이트 본문 가져오기
