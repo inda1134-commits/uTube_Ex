@@ -124,11 +124,18 @@ def select_model(
     openai_api_key="",
     anthropic_api_key="",
     google_api_key="",
-    temperature=0,
+    temperature=None,
 ):
     if provider == "OpenAI":
-        models = ("gpt-5-mini", "gpt-5.2")
-        model = st.sidebar.radio("Choose OpenAI Model", models)
+        models = (
+            "gpt-4o-mini",
+            "gpt-4o",
+        )
+
+        model = st.sidebar.radio(
+            "Choose OpenAI Model",
+            models,
+        )
 
         if not openai_api_key:
             st.warning("OpenAI API Key를 입력해주세요.")
