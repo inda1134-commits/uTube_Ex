@@ -261,7 +261,7 @@ def init_chain(
     )
 
     text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-        model_name="gpt-5",
+        encoding_name="cl100k_base",
         chunk_size=16000,
         chunk_overlap=0,
     )
@@ -285,12 +285,11 @@ def init_chain(
     )
 
     def route(x):
-        try:
-            encoding = tiktoken.encoding_for_model("gpt-5")
-        except Exception:
-            encoding = tiktoken.get_encoding("cl100k_base")
+        encoding = tiktoken.get_encoding("cl100k_base")
 
-        token_count = len(encoding.encode(x["content"]))
+        token_count = len(
+            encoding.encode(x["content"])
+        )
 
         if token_count > 16000:
             return map_reduce_chain
