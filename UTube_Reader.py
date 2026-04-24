@@ -4,6 +4,7 @@ import streamlit as st
 import requests
 
 from bs4 import BeautifulSoup
+from xml.etree.ElementTree import ParseError
 
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -192,22 +193,18 @@ def extract_youtube_video_id(url):
     try:
         parsed = urlparse(url)
 
-        # youtu.be 형식
         if parsed.netloc == "youtu.be":
             return parsed.path.lstrip("/")
 
-        # youtube.com/watch?v=
         if "youtube.com" in parsed.netloc:
             query = parse_qs(parsed.query)
 
             if "v" in query:
                 return query["v"][0]
 
-            # shorts 지원
             if "/shorts/" in parsed.path:
                 return parsed.path.split("/shorts/")[1].split("/")[0]
 
-            # embed 지원
             if "/embed/" in parsed.path:
                 return parsed.path.split("/embed/")[1].split("/")[0]
 
@@ -315,7 +312,7 @@ def validate_url(url):
 
 
 # --------------------------------------------------
-# 유튜브 내용 가져오기 (최종 안정 버전)
+# 유튜브 내용 가져오기
 # --------------------------------------------------
 def get_content_youtube(url):
     with st.spinner("Fetching YouTube..."):
@@ -326,7 +323,6 @@ def get_content_youtube(url):
                 st.error("YouTube video_id를 추출할 수 없습니다.")
                 return None
 
-            # 한국어 → 영어 순으로 자막 탐색
             transcript = YouTubeTranscriptApi.get_transcript(
                 video_id,
                 languages=["ko", "en"],
@@ -336,7 +332,6 @@ def get_content_youtube(url):
                 st.warning("이 영상에는 자막이 존재하지 않습니다.")
                 return None
 
-            # 자막 텍스트 병합
             content = "\n".join(
                 item["text"]
                 for item in transcript
@@ -351,8 +346,7 @@ def get_content_youtube(url):
 
         except TranscriptsDisabled:
             st.warning(
-                "이 영상은 자막(Transcript)이 비활성화되어 있어 "
-                "내용을 가져올 수 없습니다."
+                "이 영상은 자막(Transcript)이 비활성화되어 있습니다."
             )
             return None
 
@@ -366,6 +360,13 @@ def get_content_youtube(url):
             st.warning(
                 "이 영상을 현재 가져올 수 없습니다. "
                 "(삭제됨 / 비공개 / 지역 제한 등)"
+            )
+            return None
+
+        except ParseError:
+            st.warning(
+                "이 영상의 자막 데이터를 읽을 수 없습니다. "
+                "자동 생성 자막 오류 또는 YouTube 응답 문제입니다."
             )
             return None
 
@@ -403,7 +404,6 @@ def get_content_website(url):
                 "html.parser",
             )
 
-            # 불필요 태그 제거
             for tag in soup(
                 [
                     "script",
@@ -472,7 +472,6 @@ def main():
             st.error("유효한 URL을 입력해주세요.")
             return
 
-        # URL 종류 판별
         if is_youtube_url(url):
             content = get_content_youtube(url)
             prompt_text = YOUTUBE_SUMMARIZE_PROMPT
