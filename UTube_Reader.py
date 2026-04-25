@@ -426,7 +426,59 @@ def get_content_youtube(url):
             content_parts = []
 
             # ------------------------------------------
-            # 1. Transcript 우선 시도
+            # 1. Script(JSON-LD / ytInitialData) 우선 추출
+            # ------------------------------------------
+            try:
+                watch_url = f"https://www.youtube.com/watch?v={video_id}"
+
+                headers = {
+                    "User-Agent": (
+                        "Mozilla/5.0 "
+                        "(Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) "
+                        "Chrome/120.0 Safari/537.36"
+                    )
+                }
+
+                response = requests.get(
+                    watch_url,
+                    headers=headers,
+                    timeout=15,
+                )
+                response.raise_for_status()
+
+                soup = BeautifulSoup(
+                    response.text,
+                    "html.parser",
+                )
+
+                script_texts = []
+
+                for script in soup.find_all("script"):
+                    text = script.get_text(strip=True)
+
+                    if not text:
+                        continue
+
+                    if (
+                        "ytInitialData" in text
+                        or "ytInitialPlayerResponse" in text
+                        or "@context" in text
+                    ):
+                        if len(text) > 300:
+                            script_texts.append(text[:5000])
+
+                if script_texts:
+                    content_parts.append(
+                        "[YouTube Script Data]\n" + "\n\n".join(script_texts[:3])
+                    )
+
+            except Exception:
+                pass
+
+            # ------------------------------------------
+            # 2. Transcript 시도
             # ------------------------------------------
             transcript_success = False
 
@@ -455,15 +507,14 @@ def get_content_youtube(url):
                 ParseError,
             ):
                 st.info(
-                    "자막이 없거나 비활성화되어 있습니다. "
-                    "음성을 직접 추출합니다."
+                    "자막이 없거나 비활성화되어 있습니다. 음성을 직접 추출합니다."
                 )
 
             except Exception:
                 pass
 
             # ------------------------------------------
-            # 2. 자막 없으면 음성 직접 추출
+            # 3. 자막 없으면 음성 직접 추출
             # ------------------------------------------
             if not transcript_success:
                 audio_text = extract_audio_transcript(url)
@@ -472,36 +523,11 @@ def get_content_youtube(url):
                     content_parts.append(
                         f"[Whisper Audio Transcript]\n{audio_text}"
                     )
-                    transcript_success = True
 
             # ------------------------------------------
-            # 3. YouTube 메타데이터 fallback
+            # 4. 메타데이터 fallback
             # ------------------------------------------
             try:
-                watch_url = f"https://www.youtube.com/watch?v={video_id}"
-
-                headers = {
-                    "User-Agent": (
-                        "Mozilla/5.0 "
-                        "(Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) "
-                        "Chrome/120.0 Safari/537.36"
-                    )
-                }
-
-                response = requests.get(
-                    watch_url,
-                    headers=headers,
-                    timeout=15,
-                )
-                response.raise_for_status()
-
-                soup = BeautifulSoup(
-                    response.text,
-                    "html.parser",
-                )
-
                 title = ""
                 description = ""
 
@@ -519,40 +545,28 @@ def get_content_youtube(url):
                 meta_text = []
 
                 if title:
-                    meta_text.append(
-                        f"[영상 제목]\n{title}"
-                    )
+                    meta_text.append(f"[영상 제목]\n{title}")
 
                 if description:
-                    meta_text.append(
-                        f"[영상 설명]\n{description}"
-                    )
+                    meta_text.append(f"[영상 설명]\n{description}")
 
                 if meta_text:
-                    content_parts.append(
-                        "\n\n".join(meta_text)
-                    )
+                    content_parts.append("\n\n".join(meta_text))
 
             except Exception:
                 pass
 
-            # ------------------------------------------
-            # 4. 최종 결과
-            # ------------------------------------------
             final_content = "\n\n".join(content_parts)
 
             if not final_content.strip():
-                st.warning(
-                    "이 영상에서 가져올 수 있는 텍스트 정보가 없습니다."
-                )
+                st.warning("이 영상에서 가져올 수 있는 텍스트 정보가 없습니다.")
                 return None
 
             return final_content[:50000]
 
         except VideoUnavailable:
             st.warning(
-                "이 영상을 현재 가져올 수 없습니다. "
-                "(삭제됨 / 비공개 / 지역 제한 등)"
+                "이 영상을 현재 가져올 수 없습니다. (삭제됨 / 비공개 / 지역 제한 등)"
             )
             return None
 
