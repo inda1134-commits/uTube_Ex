@@ -1,7 +1,15 @@
+# 수정 포인트:
+# 1. 자막이 없으면 Whisper로 음성 추출 → 음성 텍스트 변환
+# 2. yt-dlp로 오디오 다운로드
+# 3. ffmpeg 필요 (requirements + packages.txt 필요)
+# 4. OpenAI Whisper API 사용 (OpenAI API Key 필요)
+
 import traceback
 import tiktoken
 import streamlit as st
 import requests
+import os
+import tempfile
 
 from bs4 import BeautifulSoup
 from xml.etree.ElementTree import ParseError
@@ -24,6 +32,9 @@ from youtube_transcript_api._errors import (
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from urllib.parse import urlparse, parse_qs
+
+from openai import OpenAI
+import yt_dlp
 
 
 # --------------------------------------------------
@@ -220,6 +231,54 @@ def extract_youtube_video_id(url):
     except Exception:
         return None
 
+# --------------------------------------------------
+# Whisper 음성 추출 함수
+# --------------------------------------------------
+def transcribe_youtube_audio(url, openai_api_key):
+    """
+    자막이 없을 경우:
+    YouTube 오디오 다운로드 → OpenAI Whisper로 음성 인식
+    """
+
+    if not openai_api_key:
+        st.warning("Whisper 사용을 위해 OpenAI API Key가 필요합니다.")
+        return None
+
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audio_path = os.path.join(tmpdir, "audio.mp3")
+
+            ydl_opts = {
+                "format": "bestaudio/best",
+                "outtmpl": os.path.join(tmpdir, "audio.%(ext)s"),
+                "quiet": True,
+                "noplaylist": True,
+                "postprocessors": [
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "mp3",
+                        "preferredquality": "192",
+                    }
+                ],
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+
+            if not os.path.exists(audio_path):
+                st.warning("오디오 다운로드 실패")
+                return None
+
+            client = OpenAI(api_key=openai_api_key)
+
+            with open(audio_path, "rb") as audio_file:
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                )
+
+            return transcript.text
+
 
 # --------------------------------------------------
 # 요약 체인
@@ -320,12 +379,7 @@ def validate_url(url):
 # --------------------------------------------------
 # 유튜브 내용 가져오기
 # --------------------------------------------------
-# --------------------------------------------------
-# 유튜브 내용 가져오기
-# 자막이 없거나 비활성화되어도
-# 영상 메타데이터 + 페이지 설명(description)까지 가져오도록 개선
-# --------------------------------------------------
-def get_content_youtube(url):
+def get_content_youtube(url, openai_api_key=""):
     with st.spinner("Fetching YouTube..."):
         try:
             video_id = extract_youtube_video_id(url)
@@ -339,6 +393,8 @@ def get_content_youtube(url):
             # ------------------------------------------
             # 1. Transcript 우선 시도
             # ------------------------------------------
+            transcript_found = False
+
             try:
                 transcript = YouTubeTranscriptApi.get_transcript(
                     video_id,
@@ -356,6 +412,7 @@ def get_content_youtube(url):
                         content_parts.append(
                             f"[YouTube Transcript]\n{transcript_text}"
                         )
+                        transcript_found = True
 
             except (
                 TranscriptsDisabled,
@@ -363,14 +420,28 @@ def get_content_youtube(url):
                 ParseError,
             ):
                 st.info(
-                    "자막을 가져올 수 없어 영상 설명(description)으로 대체합니다."
+                    "자막이 없어 Whisper 음성 인식을 시도합니다."
                 )
 
             except Exception:
                 pass
 
             # ------------------------------------------
-            # 2. YouTube 페이지 메타데이터 fallback
+            # 2. Whisper fallback
+            # ------------------------------------------
+            if not transcript_found:
+                whisper_text = transcribe_youtube_audio(
+                    url,
+                    openai_api_key,
+                )
+
+                if whisper_text:
+                    content_parts.append(
+                        f"[Whisper Audio Transcript]\n{whisper_text}"
+                    )
+
+            # ------------------------------------------
+            # 3. 메타데이터 fallback
             # ------------------------------------------
             try:
                 watch_url = f"https://www.youtube.com/watch?v={video_id}"
@@ -400,11 +471,9 @@ def get_content_youtube(url):
                 title = ""
                 description = ""
 
-                # title 추출
                 if soup.title:
                     title = soup.title.text.strip()
 
-                # meta description 추출
                 meta_desc = soup.find(
                     "meta",
                     attrs={"name": "description"},
@@ -431,9 +500,6 @@ def get_content_youtube(url):
             except Exception:
                 pass
 
-            # ------------------------------------------
-            # 3. 최종 결과 반환
-            # ------------------------------------------
             final_content = "\n\n".join(content_parts)
 
             if not final_content.strip():
@@ -446,8 +512,7 @@ def get_content_youtube(url):
 
         except VideoUnavailable:
             st.warning(
-                "이 영상을 현재 가져올 수 없습니다. "
-                "(삭제됨 / 비공개 / 지역 제한 등)"
+                "이 영상을 현재 가져올 수 없습니다."
             )
             return None
 
@@ -455,7 +520,7 @@ def get_content_youtube(url):
             st.error(f"YouTube 처리 오류: {e}")
             st.code(traceback.format_exc())
             return None
-
+        
 # --------------------------------------------------
 # 웹사이트 본문 가져오기
 # --------------------------------------------------
