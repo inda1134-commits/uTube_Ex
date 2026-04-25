@@ -244,16 +244,14 @@ def extract_audio_transcript(video_url):
                     "best"
                 ),
                 "outtmpl": output_template,
-                "quiet": False,
+                "quiet": True,
                 "noplaylist": True,
                 "nocheckcertificate": True,
                 "ignoreerrors": False,
 
-                # 핵심
-                # 브라우저 쿠키 사용
-                "cookiesfrombrowser": ("chrome",),
+                # Streamlit Cloud에서는
+                # cookiesfrombrowser 절대 사용 금지
 
-                # extractor 안정화
                 "extractor_args": {
                     "youtube": {
                         "player_client": [
@@ -315,7 +313,7 @@ def extract_audio_transcript(video_url):
             f"음성 추출 실패: {str(e)}"
         )
         return None
-        
+    
 # --------------------------------------------------
 # 요약 체인
 # --------------------------------------------------
