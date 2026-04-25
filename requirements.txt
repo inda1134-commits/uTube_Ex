@@ -18,3 +18,8 @@ youtube-transcript-api==0.6.2
 
 yt-dlp==2025.3.31
 ffmpeg-python==0.2.0
+
+yt-dlp
+openai-whisper
+ffmpeg-python
+torch
