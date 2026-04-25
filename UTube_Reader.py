@@ -231,13 +231,39 @@ def extract_youtube_video_id(url):
 def extract_audio_transcript(video_url):
     try:
         with tempfile.TemporaryDirectory() as temp_dir:
-            audio_path = os.path.join(temp_dir, "audio.%(ext)s")
+            output_template = os.path.join(
+                temp_dir,
+                "audio.%(ext)s"
+            )
 
+            # ------------------------------------------
+            # yt-dlp 안정화 옵션
+            # ------------------------------------------
             ydl_opts = {
-                "format": "bestaudio/best",
-                "outtmpl": audio_path,
+                "format": (
+                    "bestaudio[ext=m4a]/"
+                    "bestaudio/"
+                    "best[ext=mp4]/"
+                    "best"
+                ),
+                "outtmpl": output_template,
                 "quiet": True,
                 "noplaylist": True,
+                "nocheckcertificate": True,
+                "ignoreerrors": False,
+                "cookiefile": None,
+
+                # YouTube extractor 안정화
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": [
+                            "android",
+                            "web",
+                            "tv"
+                        ]
+                    }
+                },
+
                 "postprocessors": [
                     {
                         "key": "FFmpegExtractAudio",
@@ -248,7 +274,7 @@ def extract_audio_transcript(video_url):
             }
 
             # ------------------------------------------
-            # 1. YouTube 음성 다운로드
+            # 1. 음성 다운로드
             # ------------------------------------------
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([video_url])
@@ -259,30 +285,43 @@ def extract_audio_transcript(video_url):
             )
 
             if not os.path.exists(final_audio_path):
+                st.warning(
+                    "다운로드된 오디오 파일을 찾을 수 없습니다."
+                )
                 return None
 
             # ------------------------------------------
-            # 2. Whisper 로컬 STT 수행
+            # 2. Whisper STT
             # ------------------------------------------
-            model = whisper.load_model("base")
+            with st.spinner("Whisper 음성 분석 중..."):
+                model = whisper.load_model("base")
 
-            result = model.transcribe(
-                final_audio_path,
-                language="ko",
-                fp16=False,
+                result = model.transcribe(
+                    final_audio_path,
+                    language="ko",
+                    fp16=False,
+                    verbose=False,
+                )
+
+            transcript_text = (
+                result.get("text", "")
+                .strip()
             )
 
-            transcript_text = result.get("text", "").strip()
-
             if not transcript_text:
+                st.warning(
+                    "음성은 추출되었지만 텍스트 변환에 실패했습니다."
+                )
                 return None
 
             return transcript_text
 
     except Exception as e:
-        st.warning(f"음성 추출 실패: {e}")
+        st.warning(
+            f"음성 추출 실패: {str(e)}"
+        )
         return None
-
+    
 # --------------------------------------------------
 # 요약 체인
 # --------------------------------------------------
